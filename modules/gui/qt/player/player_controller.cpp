@@ -62,6 +62,8 @@ PlayerControllerPrivate::~PlayerControllerPrivate()
     vlc_player_aout_RemoveListener( m_player, m_player_aout_listener );
     vlc_player_RemoveListener( m_player, m_player_listener );
     vlc_player_RemoveTimer( m_player, m_player_timer );
+    if (m_preparser != nullptr)
+        vlc_preparser_Delete(m_preparser);
 }
 
 bool PlayerControllerPrivate::isCurrentItemSynced()
@@ -1953,35 +1955,25 @@ void PlayerController::snapshot()
 
 /* Playlist Control functions */
 
-void PlayerController::requestArtUpdate( input_item_t *p_item, bool b_forced )
+void PlayerController::requestArtUpdate( input_item_t *p_item )
 {
     Q_D(PlayerController);
 
-    if ( !p_item )
+    if (d->m_preparser == nullptr)
     {
-        /* default to current item */
-        vlc_player_locker lock{ d->m_player };
-        if ( vlc_player_IsStarted( d->m_player ) )
-            p_item = vlc_player_GetCurrentMedia( d->m_player );
+        vlc_tick_t default_timeout =
+            VLC_TICK_FROM_MS(var_InheritInteger(d->p_intf, "preparse-timeout"));
+        if (default_timeout < 0)
+            default_timeout = 0;
+
+        d->m_preparser = vlc_preparser_New(VLC_OBJECT(d->p_intf), 1,
+                                           default_timeout);
+        if (unlikely(d->m_preparser == nullptr))
+            return;
     }
 
-    if ( p_item )
-    {
-        /* check if it has already been enqueued */
-        if ( p_item->p_meta && !b_forced )
-        {
-            int status = vlc_meta_GetStatus( p_item->p_meta );
-            if ( status & ( ITEM_ART_NOTFOUND|ITEM_ART_FETCHED ) )
-                return;
-        }
-        vlc_preparser_t *parser = libvlc_GetMainPreparser( vlc_object_instance(d->p_intf) );
-        if (unlikely(parser == NULL))
-            return;
-        vlc_preparser_Push( parser, p_item,
-                            (b_forced) ? META_REQUEST_OPTION_FETCH_ANY
-                                       : META_REQUEST_OPTION_FETCH_LOCAL,
-                            &art_fetcher_cbs, d, 0, NULL );
-    }
+    vlc_preparser_Push( d->m_preparser, p_item, META_REQUEST_OPTION_FETCH_ANY,
+                        &art_fetcher_cbs, d, -1, nullptr );
 }
 
 void PlayerControllerPrivate::onArtFetchEnded(input_item_t *p_item, bool)

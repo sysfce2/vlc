@@ -740,8 +740,7 @@ int libvlc_media_parse_request(libvlc_instance_t *inst, libvlc_media_t *media,
          || expected == libvlc_media_parsed_status_done)
             return -1;
 
-    libvlc_int_t *libvlc = inst->p_libvlc_int;
-    vlc_preparser_t *parser = libvlc_GetMainPreparser(libvlc);
+    vlc_preparser_t *parser = libvlc_get_preparser(inst);
     if (unlikely(parser == NULL))
         return -1;
 
@@ -789,10 +788,9 @@ int libvlc_media_parse_request(libvlc_instance_t *inst, libvlc_media_t *media,
 void
 libvlc_media_parse_stop(libvlc_instance_t *inst, libvlc_media_t *media)
 {
-    libvlc_int_t *libvlc = inst->p_libvlc_int;
-    vlc_preparser_t *parser = libvlc_GetMainPreparser(libvlc);
-    if (unlikely(parser != NULL))
-        vlc_preparser_Cancel(parser, media);
+    vlc_preparser_t *parser = libvlc_get_preparser(inst);
+    assert(parser != NULL);
+    vlc_preparser_Cancel(parser, media);
 }
 
 // Get Parsed status for media descriptor object
@@ -911,8 +909,8 @@ libvlc_media_thumbnail_request_by_time( libvlc_instance_t *inst,
 {
     assert( md );
 
-    libvlc_priv_t *p_priv = libvlc_priv(inst->p_libvlc_int);
-    if( unlikely( p_priv->p_thumbnailer == NULL ) )
+    vlc_thumbnailer_t *thumb = libvlc_get_thumbnailer(inst);
+    if (unlikely(thumb == NULL))
         return NULL;
 
     libvlc_media_thumbnail_request_t *req = malloc( sizeof( *req ) );
@@ -926,7 +924,7 @@ libvlc_media_thumbnail_request_by_time( libvlc_instance_t *inst,
     req->type = picture_type;
     req->crop = crop;
     libvlc_media_retain( md );
-    req->req = vlc_thumbnailer_RequestByTime( p_priv->p_thumbnailer,
+    req->req = vlc_thumbnailer_RequestByTime( thumb,
         vlc_tick_from_libvlc_time( time ),
         speed == libvlc_media_thumbnail_seek_fast ?
             VLC_THUMBNAILER_SEEK_FAST : VLC_THUMBNAILER_SEEK_PRECISE,
@@ -954,8 +952,8 @@ libvlc_media_thumbnail_request_by_pos( libvlc_instance_t *inst,
 {
     assert( md );
 
-    libvlc_priv_t *priv = libvlc_priv(inst->p_libvlc_int);
-    if( unlikely( priv->p_thumbnailer == NULL ) )
+    vlc_thumbnailer_t *thumb = libvlc_get_thumbnailer(inst);
+    if (unlikely(thumb == NULL))
         return NULL;
 
     libvlc_media_thumbnail_request_t *req = malloc( sizeof( *req ) );
@@ -969,7 +967,7 @@ libvlc_media_thumbnail_request_by_pos( libvlc_instance_t *inst,
     req->crop = crop;
     req->type = picture_type;
     libvlc_media_retain( md );
-    req->req = vlc_thumbnailer_RequestByPos( priv->p_thumbnailer, pos,
+    req->req = vlc_thumbnailer_RequestByPos( thumb, pos,
         speed == libvlc_media_thumbnail_seek_fast ?
             VLC_THUMBNAILER_SEEK_FAST : VLC_THUMBNAILER_SEEK_PRECISE,
         md->p_input_item,
@@ -988,9 +986,10 @@ libvlc_media_thumbnail_request_by_pos( libvlc_instance_t *inst,
 // Destroy a thumbnail request
 void libvlc_media_thumbnail_request_destroy( libvlc_media_thumbnail_request_t *req )
 {
-    libvlc_priv_t *p_priv = libvlc_priv(req->instance->p_libvlc_int);
-    assert( p_priv->p_thumbnailer != NULL );
-    vlc_thumbnailer_DestroyRequest( p_priv->p_thumbnailer, req->req );
+    vlc_thumbnailer_t *thumb = libvlc_get_thumbnailer(req->instance);
+    assert(thumb != NULL);
+
+    vlc_thumbnailer_DestroyRequest( thumb, req->req );
     libvlc_media_release( req->md );
     libvlc_release(req->instance);
     free( req );
